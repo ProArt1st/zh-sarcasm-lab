@@ -1,0 +1,20 @@
+# Python 虚拟环境与缓存
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+*$py.class
+
+# 体积较大的模型权重文件
+*.onnx
+*.bin
+*.safetensors
+*.pt
+*.pth
+
+# 系统与编辑器临时文件
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+.zed/

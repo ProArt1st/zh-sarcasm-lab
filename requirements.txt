@@ -1,0 +1,5 @@
+# 纯离线轻量运行依赖
+onnxruntime>=1.17.0
+tokenizers>=0.15.0
+numpy>=1.24.0
+snownlp>=0.12.3

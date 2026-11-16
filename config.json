@@ -1,0 +1,34 @@
+{
+  "server": {
+    "host": "127.0.0.1",
+    "port": 8000
+  },
+  "model": {
+    "dir": "model",
+    "onnx_file": "model_int8.onnx",
+    "tokenizer_file": "tokenizer.json",
+    "max_length": 256
+  },
+  "snownlp": {
+    "positive_threshold": 0.6,
+    "negative_threshold": 0.4
+  },
+  "examples": [
+    {
+      "tag": "正常好评对照",
+      "text": "今天快递上午下单下午就到了，太快了"
+    },
+    {
+      "tag": "Level 1 显性反讽",
+      "text": "这游戏真好玩，玩了五分钟就退款了"
+    },
+    {
+      "tag": "Level 2 常识反讽",
+      "text": "快递速度真快，整整走了一个星期"
+    },
+    {
+      "tag": "Level 2 高难度翻车案例",
+      "text": "手机续航真强，一天只充三次电"
+    }
+  ]
+}
