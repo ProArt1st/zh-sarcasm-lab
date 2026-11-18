@@ -4,9 +4,11 @@ from __future__ import annotations
 
 import json
 import sys
+import tempfile
 import threading
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 from urllib.error import HTTPError
 from urllib.request import Request, urlopen
 
@@ -25,21 +27,25 @@ class BackendTestCase(unittest.TestCase):
         from backend.analyzer import SarcasmAnalyzer
         from backend.server import create_server
 
-        cls.config = load_config()
-        cls.analyzer = SarcasmAnalyzer(cls.config)
-        test_cfg = AppConfig(
+        base_cfg = load_config()
+        cls.tmp_dir = tempfile.TemporaryDirectory()
+        cls.config = AppConfig(
             host="127.0.0.1",
             port=0,
-            model_dir=cls.config.model_dir,
-            onnx_path=cls.config.onnx_path,
-            tokenizer_path=cls.config.tokenizer_path,
-            max_length=cls.config.max_length,
-            positive_threshold=cls.config.positive_threshold,
-            negative_threshold=cls.config.negative_threshold,
-            examples=cls.config.examples,
-            frontend_dir=cls.config.frontend_dir,
+            model_dir=base_cfg.model_dir,
+            onnx_path=base_cfg.onnx_path,
+            tokenizer_path=base_cfg.tokenizer_path,
+            max_length=base_cfg.max_length,
+            positive_threshold=base_cfg.positive_threshold,
+            negative_threshold=base_cfg.negative_threshold,
+            examples=base_cfg.examples,
+            frontend_dir=base_cfg.frontend_dir,
+            cache_enabled=True,
+            cache_max_entries=100,
+            cache_path=Path(cls.tmp_dir.name) / "results.json",
         )
-        cls.server = create_server(test_cfg, cls.analyzer)
+        cls.analyzer = SarcasmAnalyzer(cls.config)
+        cls.server = create_server(cls.config, cls.analyzer)
         cls.port = cls.server.server_port
         cls.thread = threading.Thread(target=cls.server.serve_forever, daemon=True)
         cls.thread.start()
@@ -48,6 +54,7 @@ class BackendTestCase(unittest.TestCase):
     def tearDownClass(cls) -> None:
         cls.server.shutdown()
         cls.server.server_close()
+        cls.tmp_dir.cleanup()
 
     def test_analyze_preset_examples(self) -> None:
         for item in self.config.examples:
@@ -105,6 +112,58 @@ class BackendTestCase(unittest.TestCase):
             self.assertEqual(resp.status, 200)
             html = resp.read().decode("utf-8")
         self.assertIn("zh-sarcasm-lab", html)
+
+    def test_cache_persistence_eviction_and_invalidation(self) -> None:
+        from backend.analyzer import SarcasmAnalyzer
+
+        with tempfile.TemporaryDirectory() as tmp:
+            cache_file = Path(tmp) / "cache.json"
+            cfg = AppConfig(
+                host=self.config.host,
+                port=self.config.port,
+                model_dir=self.config.model_dir,
+                onnx_path=self.config.onnx_path,
+                tokenizer_path=self.config.tokenizer_path,
+                max_length=self.config.max_length,
+                positive_threshold=self.config.positive_threshold,
+                negative_threshold=self.config.negative_threshold,
+                examples=self.config.examples,
+                frontend_dir=self.config.frontend_dir,
+                cache_enabled=True,
+                cache_max_entries=2,
+                cache_path=cache_file,
+            )
+            a1 = SarcasmAnalyzer(cfg)
+            r1 = a1.analyze("第一句测试")
+            self.assertEqual(set(r1.keys()), {"text", "snownlp", "roberta", "disagree", "elapsed_ms"})
+            a1.analyze("第二句测试")
+            a1.analyze("第三句测试")
+            self.assertTrue(cache_file.is_file())
+
+            # 重建实例应从磁盘读取缓存且仅保留最近 2 条（不触发模型推理）
+            a2 = SarcasmAnalyzer(cfg)
+            with patch.object(a2, "_classify_roberta", side_effect=AssertionError("不应重新推理")):
+                cached_hit = a2.analyze("第三句测试")
+                self.assertEqual(cached_hit["text"], "第三句测试")
+
+            # 阈值配置变化时旧缓存应失效
+            changed_cfg = AppConfig(
+                host=cfg.host,
+                port=cfg.port,
+                model_dir=cfg.model_dir,
+                onnx_path=cfg.onnx_path,
+                tokenizer_path=cfg.tokenizer_path,
+                max_length=cfg.max_length,
+                positive_threshold=0.75,
+                negative_threshold=cfg.negative_threshold,
+                examples=cfg.examples,
+                frontend_dir=cfg.frontend_dir,
+                cache_enabled=True,
+                cache_max_entries=2,
+                cache_path=cache_file,
+            )
+            a3 = SarcasmAnalyzer(changed_cfg)
+            self.assertEqual(a3.cache_size, 0)
 
 
 if __name__ == "__main__":

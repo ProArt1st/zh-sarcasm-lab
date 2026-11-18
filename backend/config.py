@@ -58,6 +58,9 @@ class AppConfig:
     negative_threshold: float
     examples: list[dict[str, str]]
     frontend_dir: Path
+    cache_enabled: bool = True
+    cache_max_entries: int = 100
+    cache_path: Path = ROOT_DIR / "backend" / "cache" / "results.json"
 
 
 def load_config(config_path: Path = CONFIG_PATH) -> AppConfig:
@@ -71,8 +74,10 @@ def load_config(config_path: Path = CONFIG_PATH) -> AppConfig:
     server_cfg = raw["server"]
     model_cfg = raw["model"]
     snow_cfg = raw["snownlp"]
+    cache_cfg = raw.get("cache", {})
 
     model_dir = ROOT_DIR / model_cfg["dir"]
+    cache_file = str(cache_cfg.get("file", "backend/cache/results.json"))
     return AppConfig(
         host=str(server_cfg["host"]),
         port=int(server_cfg["port"]),
@@ -87,4 +92,7 @@ def load_config(config_path: Path = CONFIG_PATH) -> AppConfig:
             for item in raw.get("examples", [])
         ],
         frontend_dir=ROOT_DIR / "frontend",
+        cache_enabled=bool(cache_cfg.get("enabled", True)),
+        cache_max_entries=max(0, int(cache_cfg.get("max_entries", 100))),
+        cache_path=ROOT_DIR / cache_file,
     )
